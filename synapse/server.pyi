@@ -25,7 +25,7 @@ class HomeServer(object):
         pass
     def get_auth(self) -> synapse.api.auth.Auth:
         pass
-    def get_auth_handler(self) -> synapse.handlers.auth.AuthHandler:
+    def get_auth_handler(self) -> synapse.handlers.custom_auth.AuthHandler:
         pass
     def get_datastore(self) -> synapse.storage.DataStore:
         pass
