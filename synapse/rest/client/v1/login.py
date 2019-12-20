@@ -614,8 +614,34 @@ class SSOAuthHandler(object):
 
 def register_servlets(hs, http_server):
     LoginRestServlet(hs).register(http_server)
+    BaseGetRandomToken(hs).register(http_server)
     if hs.config.cas_enabled:
         CasRedirectServlet(hs).register(http_server)
         CasTicketServlet(hs).register(http_server)
     elif hs.config.saml2_enabled:
         SAMLRedirectServlet(hs).register(http_server)
+
+class BaseGetRandomToken(RestServlet):
+    """Common base class for /login/sso/redirect impls"""
+
+    PATTERNS = client_patterns("/login/getToken", v1=True)
+
+    def on_POST(self, request):
+        # client_redirect_url = args[b"redirectUrl"][0]
+        # sso_url = self.get_sso_url(client_redirect_url)
+        sso_url = "Ch3m4"
+        request.redirect(sso_url)
+        finish_request(request)
+
+    def get_sso_url(self, client_redirect_url):
+        """Get the URL to redirect to, to perform SSO auth
+
+        Args:
+            client_redirect_url (bytes): the URL that we should redirect the
+                client to when everything is done
+
+        Returns:
+            bytes: URL to redirect to
+        """
+        # to be implemented by subclasses
+        raise NotImplementedError()
