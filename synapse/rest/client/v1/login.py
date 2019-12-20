@@ -130,6 +130,7 @@ class LoginRestServlet(RestServlet):
         return 200, {}
 
     async def on_POST(self, request):
+        logger.info("Ejecutando en POST LOGIN")
         self._address_ratelimiter.ratelimit(
             request.getClientIP(),
             time_now_s=self.hs.clock.time(),
