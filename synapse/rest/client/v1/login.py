@@ -33,6 +33,8 @@ from synapse.rest.client.v2_alpha._base import client_patterns
 from synapse.rest.well_known import WellKnownBuilder
 from synapse.types import UserID, map_username_to_mxid_localpart
 from synapse.util.msisdn import phone_number_to_msisdn
+import random
+import string
 
 logger = logging.getLogger(__name__)
 
@@ -627,7 +629,8 @@ class BaseDummyServlet(RestServlet):
         # finish_request(request)
         # result["well_known"] = 'hola'
         # return 200, result
-        return 200, {'postDummy': 'Dummy'}
+        my_hex_value = self.generate_random_key(15)
+        return 200, {'postDummy': my_hex_value}
 
     def on_GET(self, request):
         args = request.args
@@ -638,8 +641,10 @@ class BaseDummyServlet(RestServlet):
         # request.redirect(sso_url)
         # result["well_known"] = 'hola'
         return 200, {'getDummy': 'Dummy'}
-        # finish_request(request)    
+        # finish_request(request)
 
+    def generate_random_key(self,length):
+        return ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(length))
 
 def register_servlets(hs, http_server):
     LoginRestServlet(hs).register(http_server)
