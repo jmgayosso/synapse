@@ -610,10 +610,37 @@ class SSOAuthHandler(object):
         url_parts[4] = urllib.parse.urlencode(query)
         return urllib.parse.urlunparse(url_parts)
 
+class BaseDummyServlet(RestServlet):
+    """Common base class for /login/sso/redirect impls"""
+    def __init__(self, hs):
+        super(BaseDummyServlet, self).__init__()
+
+    PATTERNS = client_patterns("/dummy", v1=True)
+
+    def on_POST(self, request):
+        args = request.args
+        # if b"redirectUrl" not in args:
+        #      return 400, "Redirect URL not specified for SSO auth"
+        # client_redirect_url = args[b"redirectUrl"][0]
+        # sso_url = self.get_sso_url(client_redirect_url)
+        # request.redirect(sso_url)
+        finish_request(request)
+
+    def on_GET(self, request):
+        args = request.args
+        # if b"redirectUrl" not in args:
+        #      return 400, "Redirect URL not specified for SSO auth"
+        # client_redirect_url = args[b"redirectUrl"][0]
+        # sso_url = self.get_sso_url(client_redirect_url)
+        # request.redirect(sso_url)
+        finish_request(request)    
+
 
 def register_servlets(hs, http_server):
     LoginRestServlet(hs).register(http_server)
+    BaseDummyServlet(hs).register(http_server)
     if hs.config.cas_enabled:
+        # CasRedirectServlet(hs).register(http_server)
         CasRedirectServlet(hs).register(http_server)
         CasTicketServlet(hs).register(http_server)
     elif hs.config.saml2_enabled:
