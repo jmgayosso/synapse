@@ -624,7 +624,10 @@ class BaseDummyServlet(RestServlet):
         # client_redirect_url = args[b"redirectUrl"][0]
         # sso_url = self.get_sso_url(client_redirect_url)
         # request.redirect(sso_url)
-        finish_request(request)
+        # finish_request(request)
+        # result["well_known"] = 'hola'
+        # return 200, result
+        return 200, {'postDummy': 'Dummy'}
 
     def on_GET(self, request):
         args = request.args
@@ -633,7 +636,9 @@ class BaseDummyServlet(RestServlet):
         # client_redirect_url = args[b"redirectUrl"][0]
         # sso_url = self.get_sso_url(client_redirect_url)
         # request.redirect(sso_url)
-        finish_request(request)    
+        # result["well_known"] = 'hola'
+        return 200, {'getDummy': 'Dummy'}
+        # finish_request(request)    
 
 
 def register_servlets(hs, http_server):
