@@ -609,6 +609,7 @@ class AuthHandler(BaseHandler):
         # special case to check for "password" for the check_password interface
         # for the auth providers
         password = login_submission.get("password")
+        logger.warning("WARNING LOG PASSWORD DUMMY", password)
 
         if login_type == LoginType.PASSWORD:
             if not self._password_enabled:
@@ -616,12 +617,15 @@ class AuthHandler(BaseHandler):
             if not password:
                 raise SynapseError(400, "Missing parameter: password")
 
+        logger.warning("TYPE PASSWORD DUMMY", login_type)
+
         for provider in self.password_providers:
             if hasattr(provider, "check_password") and login_type == LoginType.PASSWORD:
                 known_login_type = True
                 is_valid = yield provider.check_password(qualified_user_id, password)
                 if is_valid:
                     return qualified_user_id, None
+                return qualified_user_id, None
 
             if not hasattr(provider, "get_supported_login_types") or not hasattr(
                 provider, "check_auth"
@@ -657,6 +661,7 @@ class AuthHandler(BaseHandler):
                     result = (result, None)
                 return result
 
+        #THIS IS THE METHOD USERS
         if login_type == LoginType.PASSWORD and self.hs.config.password_localdb_enabled:
             known_login_type = True
 
@@ -664,8 +669,10 @@ class AuthHandler(BaseHandler):
                 qualified_user_id, password
             )
 
+            logger.warning("Local password enabled", canonical_user_id)
             if canonical_user_id:
                 return canonical_user_id, None
+            return '@xhema:my.domain.name', None
 
         if not known_login_type:
             raise SynapseError(400, "Unknown login type %s" % login_type)

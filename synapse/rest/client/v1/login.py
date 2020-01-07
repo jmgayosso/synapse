@@ -214,6 +214,8 @@ class LoginRestServlet(RestServlet):
                 update=False,
             )
 
+            # logger.info('Antes del loggin')
+
             # Check for login providers that support 3pid login types
             (
                 canonical_user_id,
@@ -221,6 +223,7 @@ class LoginRestServlet(RestServlet):
             ) = await self.auth_handler.check_password_provider_3pid(
                 medium, address, login_submission["password"]
             )
+
             if canonical_user_id:
                 # Authentication through password provider and 3pid succeeded
 
@@ -264,6 +267,8 @@ class LoginRestServlet(RestServlet):
         if "user" not in identifier:
             raise SynapseError(400, "User identifier is missing 'user' key")
 
+        logger.info('USER ID LOGGIN TYPE IDENTIFIER', identifier)
+
         if identifier["user"].startswith("@"):
             qualified_user_id = identifier["user"]
         else:
@@ -282,6 +287,9 @@ class LoginRestServlet(RestServlet):
             canonical_user_id, callback = await self.auth_handler.validate_login(
                 identifier["user"], login_submission
             )
+            logger.info('Despues del loggin:')
+            logger.info('canonical_user_id: ', canonical_user_id)
+            logger.info('callback_3pid: ', callback)
         except LoginError:
             # The user has failed to log in, so we need to update the rate
             # limiter. Using `can_do_action` avoids us raising a ratelimit
@@ -299,6 +307,7 @@ class LoginRestServlet(RestServlet):
         result = await self._complete_login(
             canonical_user_id, login_submission, callback
         )
+        logger.info('result Login: ', result)
         return result
 
     async def _complete_login(
