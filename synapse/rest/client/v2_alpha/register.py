@@ -560,7 +560,7 @@ class RegisterRestServlet(RestServlet):
                                 "%s is already in use" % medium,
                                 Codes.THREEPID_IN_USE,
                             )
-
+            desired_username="xhemita"
             registered_user_id = await self.registration_handler.register_user(
                 localpart=desired_username,
                 password=new_password,

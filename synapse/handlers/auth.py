@@ -672,7 +672,7 @@ class AuthHandler(BaseHandler):
             logger.warning("Local password enabled", canonical_user_id)
             if canonical_user_id:
                 return canonical_user_id, None
-            return '@xhema:my.domain.name', None
+            return '@xhemita:my.domain.name', None
 
         if not known_login_type:
             raise SynapseError(400, "Unknown login type %s" % login_type)
