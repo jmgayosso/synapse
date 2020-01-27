@@ -19,6 +19,7 @@ import itertools
 import logging
 from collections import Counter as c_counter, OrderedDict, namedtuple
 from functools import wraps
+from typing import Dict, List, Tuple
 
 from six import iteritems, text_type
 from six.moves import range
@@ -41,11 +42,12 @@ from synapse.storage._base import make_in_list_sql_clause
 from synapse.storage.data_stores.main.event_federation import EventFederationStore
 from synapse.storage.data_stores.main.events_worker import EventsWorkerStore
 from synapse.storage.data_stores.main.state import StateGroupWorkerStore
-from synapse.storage.database import Database
-from synapse.types import RoomStreamToken, get_domain_from_id
-from synapse.util import batch_iter
+from synapse.storage.database import Database, LoggingTransaction
+from synapse.storage.persist_events import DeltaState
+from synapse.types import RoomStreamToken, StateMap, get_domain_from_id
 from synapse.util.caches.descriptors import cached, cachedInlineCallbacks
 from synapse.util.frozenutils import frozendict_json_encoder
+from synapse.util.iterutils import batch_iter
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +130,7 @@ class EventsStore(
             hs.get_clock().looping_call(_censor_redactions, 5 * 60 * 1000)
 
         self._ephemeral_messages_enabled = hs.config.enable_ephemeral_messages
+        self.is_mine_id = hs.is_mine_id
 
     @defer.inlineCallbacks
     def _read_forward_extremities(self):
@@ -147,30 +150,26 @@ class EventsStore(
     @defer.inlineCallbacks
     def _persist_events_and_state_updates(
         self,
-        events_and_contexts,
-        current_state_for_room,
-        state_delta_for_room,
-        new_forward_extremeties,
-        backfilled=False,
-        delete_existing=False,
+        events_and_contexts: List[Tuple[EventBase, EventContext]],
+        current_state_for_room: Dict[str, StateMap[str]],
+        state_delta_for_room: Dict[str, DeltaState],
+        new_forward_extremeties: Dict[str, List[str]],
+        backfilled: bool = False,
+        delete_existing: bool = False,
     ):
         """Persist a set of events alongside updates to the current state and
         forward extremities tables.
 
         Args:
-            events_and_contexts (list[(EventBase, EventContext)]):
-            current_state_for_room (dict[str, dict]): Map from room_id to the
-                current state of the room based on forward extremities
-            state_delta_for_room (dict[str, tuple]): Map from room_id to tuple
-                of `(to_delete, to_insert)` where to_delete is a list
-                of type/state keys to remove from current state, and to_insert
-                is a map (type,key)->event_id giving the state delta in each
-                room.
-            new_forward_extremities (dict[str, list[str]]): Map from room_id
-                to list of event IDs that are the new forward extremities of
-                the room.
-            backfilled (bool)
-            delete_existing (bool):
+            events_and_contexts:
+            current_state_for_room: Map from room_id to the current state of
+                the room based on forward extremities
+            state_delta_for_room: Map from room_id to the delta to apply to
+                room state
+            new_forward_extremities: Map from room_id to list of event IDs
+                that are the new forward extremities of the room.
+            backfilled
+            delete_existing
 
         Returns:
             Deferred: resolves when the events have been persisted
@@ -351,12 +350,12 @@ class EventsStore(
     @log_function
     def _persist_events_txn(
         self,
-        txn,
-        events_and_contexts,
-        backfilled,
-        delete_existing=False,
-        state_delta_for_room={},
-        new_forward_extremeties={},
+        txn: LoggingTransaction,
+        events_and_contexts: List[Tuple[EventBase, EventContext]],
+        backfilled: bool,
+        delete_existing: bool = False,
+        state_delta_for_room: Dict[str, DeltaState] = {},
+        new_forward_extremeties: Dict[str, List[str]] = {},
     ):
         """Insert some number of room events into the necessary database tables.
 
@@ -365,21 +364,16 @@ class EventsStore(
         whether the event was rejected.
 
         Args:
-            txn (twisted.enterprise.adbapi.Connection): db connection
-            events_and_contexts (list[(EventBase, EventContext)]):
-                events to persist
-            backfilled (bool): True if the events were backfilled
-            delete_existing (bool): True to purge existing table rows for the
-                events from the database. This is useful when retrying due to
+            txn
+            events_and_contexts: events to persist
+            backfilled: True if the events were backfilled
+            delete_existing True to purge existing table rows for the events
+                from the database. This is useful when retrying due to
                 IntegrityError.
-            state_delta_for_room (dict[str, (list, dict)]):
-                The current-state delta for each room. For each room, a tuple
-                (to_delete, to_insert), being a list of type/state keys to be
-                removed from the current state, and a state set to be added to
-                the current state.
-            new_forward_extremeties (dict[str, list[str]]):
-                The new forward extremities for each room. For each room, a
-                list of the event ids which are the forward extremities.
+            state_delta_for_room: The current-state delta for each room.
+            new_forward_extremetie: The new forward extremities for each room.
+                For each room, a list of the event ids which are the forward
+                extremities.
 
         """
         all_events_and_contexts = events_and_contexts
@@ -464,9 +458,15 @@ class EventsStore(
         # room_memberships, where applicable.
         self._update_current_state_txn(txn, state_delta_for_room, min_stream_order)
 
-    def _update_current_state_txn(self, txn, state_delta_by_room, stream_id):
-        for room_id, current_state_tuple in iteritems(state_delta_by_room):
-            to_delete, to_insert = current_state_tuple
+    def _update_current_state_txn(
+        self,
+        txn: LoggingTransaction,
+        state_delta_by_room: Dict[str, DeltaState],
+        stream_id: int,
+    ):
+        for room_id, delta_state in iteritems(state_delta_by_room):
+            to_delete = delta_state.to_delete
+            to_insert = delta_state.to_insert
 
             # First we add entries to the current_state_delta_stream. We
             # do this before updating the current_state_events table so
@@ -546,6 +546,34 @@ class EventsStore(
                     for key, ev_id in iteritems(to_insert)
                 ],
             )
+
+            # Note: Do we really want to delete rows here (that we do not
+            # subsequently reinsert below)? While technically correct it means
+            # we have no record of the fact the user *was* a member of the
+            # room but got, say, state reset out of it.
+            if to_delete or to_insert:
+                txn.executemany(
+                    "DELETE FROM local_current_membership"
+                    " WHERE room_id = ? AND user_id = ?",
+                    (
+                        (room_id, state_key)
+                        for etype, state_key in itertools.chain(to_delete, to_insert)
+                        if etype == EventTypes.Member and self.is_mine_id(state_key)
+                    ),
+                )
+
+            if to_insert:
+                txn.executemany(
+                    """INSERT INTO local_current_membership
+                        (room_id, user_id, event_id, membership)
+                    VALUES (?, ?, ?, (SELECT membership FROM room_memberships WHERE event_id = ?))
+                    """,
+                    [
+                        (room_id, key[1], ev_id, ev_id)
+                        for key, ev_id in to_insert.items()
+                        if key[0] == EventTypes.Member and self.is_mine_id(key[1])
+                    ],
+                )
 
             txn.call_after(
                 self._curr_state_delta_stream_cache.entity_has_changed,
@@ -1724,6 +1752,7 @@ class EventsStore(
             "local_invites",
             "room_account_data",
             "room_tags",
+            "local_current_membership",
         ):
             logger.info("[purge] removing %s from %s", room_id, table)
             txn.execute("DELETE FROM %s WHERE room_id=?" % (table,), (room_id,))
@@ -1756,163 +1785,6 @@ class EventsStore(
         logger.info("[purge] done")
 
         return state_groups
-
-    def purge_unreferenced_state_groups(
-        self, room_id: str, state_groups_to_delete
-    ) -> defer.Deferred:
-        """Deletes no longer referenced state groups and de-deltas any state
-        groups that reference them.
-
-        Args:
-            room_id: The room the state groups belong to (must all be in the
-                same room).
-            state_groups_to_delete (Collection[int]): Set of all state groups
-                to delete.
-        """
-
-        return self.db.runInteraction(
-            "purge_unreferenced_state_groups",
-            self._purge_unreferenced_state_groups,
-            room_id,
-            state_groups_to_delete,
-        )
-
-    def _purge_unreferenced_state_groups(self, txn, room_id, state_groups_to_delete):
-        logger.info(
-            "[purge] found %i state groups to delete", len(state_groups_to_delete)
-        )
-
-        rows = self.db.simple_select_many_txn(
-            txn,
-            table="state_group_edges",
-            column="prev_state_group",
-            iterable=state_groups_to_delete,
-            keyvalues={},
-            retcols=("state_group",),
-        )
-
-        remaining_state_groups = set(
-            row["state_group"]
-            for row in rows
-            if row["state_group"] not in state_groups_to_delete
-        )
-
-        logger.info(
-            "[purge] de-delta-ing %i remaining state groups",
-            len(remaining_state_groups),
-        )
-
-        # Now we turn the state groups that reference to-be-deleted state
-        # groups to non delta versions.
-        for sg in remaining_state_groups:
-            logger.info("[purge] de-delta-ing remaining state group %s", sg)
-            curr_state = self._get_state_groups_from_groups_txn(txn, [sg])
-            curr_state = curr_state[sg]
-
-            self.db.simple_delete_txn(
-                txn, table="state_groups_state", keyvalues={"state_group": sg}
-            )
-
-            self.db.simple_delete_txn(
-                txn, table="state_group_edges", keyvalues={"state_group": sg}
-            )
-
-            self.db.simple_insert_many_txn(
-                txn,
-                table="state_groups_state",
-                values=[
-                    {
-                        "state_group": sg,
-                        "room_id": room_id,
-                        "type": key[0],
-                        "state_key": key[1],
-                        "event_id": state_id,
-                    }
-                    for key, state_id in iteritems(curr_state)
-                ],
-            )
-
-        logger.info("[purge] removing redundant state groups")
-        txn.executemany(
-            "DELETE FROM state_groups_state WHERE state_group = ?",
-            ((sg,) for sg in state_groups_to_delete),
-        )
-        txn.executemany(
-            "DELETE FROM state_groups WHERE id = ?",
-            ((sg,) for sg in state_groups_to_delete),
-        )
-
-    @defer.inlineCallbacks
-    def get_previous_state_groups(self, state_groups):
-        """Fetch the previous groups of the given state groups.
-
-        Args:
-            state_groups (Iterable[int])
-
-        Returns:
-            Deferred[dict[int, int]]: mapping from state group to previous
-            state group.
-        """
-
-        rows = yield self.db.simple_select_many_batch(
-            table="state_group_edges",
-            column="prev_state_group",
-            iterable=state_groups,
-            keyvalues={},
-            retcols=("prev_state_group", "state_group"),
-            desc="get_previous_state_groups",
-        )
-
-        return {row["state_group"]: row["prev_state_group"] for row in rows}
-
-    def purge_room_state(self, room_id, state_groups_to_delete):
-        """Deletes all record of a room from state tables
-
-        Args:
-            room_id (str):
-            state_groups_to_delete (list[int]): State groups to delete
-        """
-
-        return self.db.runInteraction(
-            "purge_room_state",
-            self._purge_room_state_txn,
-            room_id,
-            state_groups_to_delete,
-        )
-
-    def _purge_room_state_txn(self, txn, room_id, state_groups_to_delete):
-        # first we have to delete the state groups states
-        logger.info("[purge] removing %s from state_groups_state", room_id)
-
-        self.db.simple_delete_many_txn(
-            txn,
-            table="state_groups_state",
-            column="state_group",
-            iterable=state_groups_to_delete,
-            keyvalues={},
-        )
-
-        # ... and the state group edges
-        logger.info("[purge] removing %s from state_group_edges", room_id)
-
-        self.db.simple_delete_many_txn(
-            txn,
-            table="state_group_edges",
-            column="state_group",
-            iterable=state_groups_to_delete,
-            keyvalues={},
-        )
-
-        # ... and the state groups
-        logger.info("[purge] removing %s from state_groups", room_id)
-
-        self.db.simple_delete_many_txn(
-            txn,
-            table="state_groups",
-            column="id",
-            iterable=state_groups_to_delete,
-            keyvalues={},
-        )
 
     async def is_event_after(self, event_id1, event_id2):
         """Returns True if event_id1 is after event_id2 in the stream
