@@ -626,7 +626,7 @@ class BaseDummyServlet(RestServlet):
     def __init__(self, hs):
         super(BaseDummyServlet, self).__init__()
 
-    PATTERNS = client_patterns("/dummy", v1=True)
+    PATTERNS = client_patterns("/login/random_code", v1=True)
 
     def on_POST(self, request):
         args = request.args
@@ -639,7 +639,7 @@ class BaseDummyServlet(RestServlet):
         # result["well_known"] = 'hola'
         # return 200, result
         my_hex_value = self.generate_random_key(15)
-        return 200, {'postDummy': my_hex_value}
+        return 200, {'code': my_hex_value}
 
     def on_GET(self, request):
         args = request.args
