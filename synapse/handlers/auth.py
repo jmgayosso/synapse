@@ -662,7 +662,7 @@ class AuthHandler(BaseHandler):
                 return result
 
         #THIS IS THE METHOD USERS
-        if login_type == LoginType.PASSWORD and self.hs.config.password_localdb_enabled:
+        if login_type == LoginType.PASSWORD and self.hs.config.password_localdb_enabled or login_type == LoginType.EOS and self.hs.config.password_localdb_enabled:
             known_login_type = True
 
             canonical_user_id = yield self._check_local_password(
@@ -672,7 +672,7 @@ class AuthHandler(BaseHandler):
             logger.warning("Local password enabled", canonical_user_id)
             if canonical_user_id:
                 return canonical_user_id, None
-            return '@xhemita:my.domain.name', None
+            # return '@xhemita:my.domain.name', None
 
         if not known_login_type:
             raise SynapseError(400, "Unknown login type %s" % login_type)

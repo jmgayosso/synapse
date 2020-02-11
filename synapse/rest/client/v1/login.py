@@ -176,6 +176,7 @@ class LoginRestServlet(RestServlet):
             login_submission.get("medium"),
             login_submission.get("address"),
             login_submission.get("user"),
+            login_submission.get("type"),
         )
         login_submission_legacy_convert(login_submission)
 

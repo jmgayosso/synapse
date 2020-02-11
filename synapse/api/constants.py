@@ -62,6 +62,7 @@ class LoginType(object):
     RECAPTCHA = "m.login.recaptcha"
     TERMS = "m.login.terms"
     DUMMY = "m.login.dummy"
+    EOS = "m.login.eos"
 
     # Only for C/S API v1
     APPLICATION_SERVICE = "m.login.application_service"
