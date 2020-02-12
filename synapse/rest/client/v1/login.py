@@ -179,6 +179,10 @@ class LoginRestServlet(RestServlet):
             login_submission.get("type"),
         )
         login_submission_legacy_convert(login_submission)
+        # logger.info(
+        #     "Logger user_exist from controller",
+        #     user_exist
+        # )
 
         if "identifier" not in login_submission:
             raise SynapseError(400, "Missing param: identifier")
@@ -285,6 +289,10 @@ class LoginRestServlet(RestServlet):
         )
 
         try:
+            user_id = await self.auth_handler.check_user_exists(identifier["user"])
+            logger.info('El usuario: ', user_id)
+            if not user_id:
+                logger.info('El usuario no existe')
             canonical_user_id, callback = await self.auth_handler.validate_login(
                 identifier["user"], login_submission
             )

@@ -577,6 +577,17 @@ class AuthHandler(BaseHandler):
             Iterable[str]: login types
         """
         return self._supported_login_types
+    
+    # @defer.inlineCallbacks
+    # def check_user_exist(self, username):
+    #     user_exist = yield self._find_user_id_and_pwd_hash(username)
+    #     #user_exist = 'check_if_user_exist Sucess'
+    #     logger.warning("user exist", user_exist, username)
+    #     return user_exist
+    
+    def _check_user(username):
+        #user = yield self._find_user_id_and_pwd_hash(user_id)
+        return 'Success _check_user'
 
     @defer.inlineCallbacks
     def validate_login(self, username, login_submission):
