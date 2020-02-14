@@ -620,7 +620,7 @@ class AuthHandler(BaseHandler):
         # special case to check for "password" for the check_password interface
         # for the auth providers
         password = login_submission.get("password")
-        logger.warning("WARNING LOG PASSWORD DUMMY", password)
+        logger.warning("WARNING LOG PASSWORD EOS", password)
 
         if login_type == LoginType.PASSWORD:
             if not self._password_enabled:
@@ -628,7 +628,7 @@ class AuthHandler(BaseHandler):
             if not password:
                 raise SynapseError(400, "Missing parameter: password")
 
-        logger.warning("TYPE PASSWORD DUMMY", login_type)
+        logger.warning("TYPE PASSWORD EOS", login_type)
 
         for provider in self.password_providers:
             if hasattr(provider, "check_password") and login_type == LoginType.PASSWORD:
@@ -690,7 +690,11 @@ class AuthHandler(BaseHandler):
 
         # We raise a 403 here, but note that if we're doing user-interactive
         # login, it turns all LoginErrors into a 401 anyway.
-        raise LoginError(403, "Invalid password", errcode=Codes.FORBIDDEN)
+        #Return error to local password or eos account
+        if login_type == LoginType.PASSWORD:
+            raise LoginError(403, "Invalid password", errcode=Codes.FORBIDDEN)
+        elif login_type == LoginType.EOS:
+            raise LoginError(403, "EOS account not found", errcode=Codes.USER_NOT_REGISTERED)
 
     @defer.inlineCallbacks
     def check_password_provider_3pid(self, medium, address, password):

@@ -288,11 +288,16 @@ class LoginRestServlet(RestServlet):
             update=False,
         )
 
-        try:
+         #EOS FLOW
+        if identifier["type"] == "m.login.eos":
+            logger.info('Existe el usuario???')
             user_id = await self.auth_handler.check_user_exists(identifier["user"])
             logger.info('El usuario: ', user_id)
             if not user_id:
-                logger.info('El usuario no existe')
+                raise LoginError(400, "Eos account not found yet", errcode=Codes.USER_NOT_REGISTERED)
+
+        try:
+            #Normal flow
             canonical_user_id, callback = await self.auth_handler.validate_login(
                 identifier["user"], login_submission
             )
